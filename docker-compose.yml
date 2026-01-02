@@ -5,7 +5,7 @@ name: gitlight
 #   User: root
 #   Password: ("gitlab" should be the name of the container / container id). 
 #     `sudo docker exec -it gitlab grep 'Password:' /etc/gitlab/initial_root_password`
-# ~4 min to deploy configure.
+# ~3-4 min to deploy configure.
 
 services:
   gitlab:
@@ -14,37 +14,39 @@ services:
     restart: always
     hostname: 'localhost'
     environment:
+      GITLAB_SIGNUP_ENABLED: "false"
       GITLAB_OMNIBUS_CONFIG: |
-       external_url 'http://gitlab.example.com:8929'
-       gitlab_rails['gitlab_shell_ssh_port'] = 2424
-       gitlab_rails['signup_enabled'] = false # Desactiva la posibilidad de que usarios creen cuenta al ingresar al sitio.
+         external_url 'http://gitlab.example.com:8929'
+         gitlab_rails['gitlab_shell_ssh_port'] = 2424
+         gitlab_rails['signup_enabled'] = false # Desactiva la posibilidad de que usarios creen cuenta al ingresar al sitio.
+
+         #Disable extra services for less memory usage
        
-       #Disable extra services for less memory usage
-       # Disable monitoring services
-       gitlab_pages['enable'] = false
-       prometheus['enable'] = false
-       prometheus_monitoring['enable'] = false #added to test
-       mattermost['enable'] = false
-       alertmanager['enable'] = false
+         # Disable monitoring services
+         gitlab_pages['enable'] = false
+         prometheus['enable'] = false
+         prometheus_monitoring['enable'] = false #added to test
+         mattermost['enable'] = false
+         alertmanager['enable'] = false
        
-       # Disable built-in data exporters
-       node_exporter['enable'] = false
-       postgres_exporter['enable'] = false
-       redis_exporter['enable'] = false
-       gitlab_exporter['enable'] = false
-       
-       # Disable extra apps/features
-       # registry['enable'] = false
-       # XXXX grafana['enable'] = false # Deprecated 17+
-       # XXXX focalboard['enable'] = false # Deprecated 17+
-       
-       # Workers
-       # Reduce Sidekiq concurrency (adjust based on your RAM)
-       sidekiq['max_concurrency'] = 10 # Default is higher, 10-20 is good for low RAM
-       # Crucial: Set Puma workers to 0 if you rely heavily on Sidekiq for background jobs, otherwise, reduce worker_processes to 1-2 (default is dynamic)
-       # Lower Puma workers if you have limited CPU (adjust based on your resources)
-       puma['worker_processes'] = 2 # e.g., 0 Or 1-2 for very low RAM, for a 2 CPU machine
-       puma['per_worker_max_memory_mb'] = 2048 # Limit each worker to 2 GB
+         # Disable built-in data exporters
+         node_exporter['enable'] = false
+         postgres_exporter['enable'] = false
+         redis_exporter['enable'] = false
+         gitlab_exporter['enable'] = false
+         
+         # Disable extra apps/features
+         # registry['enable'] = false
+         # XXXX grafana['enable'] = false # Deprecated 17+
+         # XXXX focalboard['enable'] = false # Deprecated 17+
+         
+         # Workers
+         # Reduce Sidekiq concurrency (adjust based on your RAM)
+         sidekiq['max_concurrency'] = 10 # Default is higher, 10-20 is good for low RAM #PROBAR OTROS VALORES
+         # Crucial: Set Puma workers to 0 if you rely heavily on Sidekiq for background jobs, otherwise, reduce worker_processes to 1-2 (default is dynamic)
+         # Lower Puma workers if you have limited CPU (adjust based on your resources)
+         puma['worker_processes'] = 2 # e.g., 0 Or 1-2 for very low RAM, for a 2 CPU machine #PROBAR OTROS VALORES
+         puma['per_worker_max_memory_mb'] = 2048 # Limit each worker to 2 GB #PROBAR OTROS VALORES
       
       #To search and purify.
       #nginx['enable'] = true;
