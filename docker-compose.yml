@@ -4,21 +4,23 @@ name: gitlight
 #To obtain passwork admin user:
 #   User: root
 #   Password: ("gitlab" should be the name of the container / container id). 
-#     `sudo docker exec -it gitlab grep 'Password:' /etc/gitlab/initial_root_password`
+#     `sudo docker exec -it gitlight grep 'Password:' /etc/gitlab/initial_root_password`
 # ~3-4 min to deploy configure.
 
 services:
-  gitlab:
+  gitlight:
     image: 'gitlab/gitlab-ce:latest'
-    container_name: gitlab
+    container_name: gitlight
     restart: always
     hostname: 'localhost'
     environment:
-      GITLAB_SIGNUP_ENABLED: "false"
+      #GITLAB_SIGNUP_ENABLED: false # Does not work
+      #GITLAB_RAILS_SIGNUP_ENABLED: false # Does not work
       GITLAB_OMNIBUS_CONFIG: |
-         external_url 'http://gitlab.example.com:8929'
+         external_url 'http://gitlab.local:8929';
          gitlab_rails['gitlab_shell_ssh_port'] = 2424
-         gitlab_rails['signup_enabled'] = false # Desactiva la posibilidad de que usarios creen cuenta al ingresar al sitio.
+         # gitlab_rails['signup_enabled'] = false # Desactiva la posibilidad de que usarios creen cuenta al ingresar al sitio. # Does not work
+         # gitlab_rails['gitlab_signup_enabled'] = false # Enteoria desactiva lo mismo... que porqueria... # Does not work
 
          #Disable extra services for less memory usage
        
@@ -36,7 +38,12 @@ services:
          gitlab_exporter['enable'] = false
          
          # Disable extra apps/features
-         # registry['enable'] = false
+         registry['enable'] = true # Is used for CI/CD and user management. Can be replaced for a external one.
+         registry_external_url 'http://gitlab.local:5050'
+         nginx['enable'] = true;
+         nginx['listen_port'] = 8929;
+         nginx['listen_https'] = false;
+      
          # XXXX grafana['enable'] = false # Deprecated 17+
          # XXXX focalboard['enable'] = false # Deprecated 17+
          
@@ -46,35 +53,28 @@ services:
          # Crucial: Set Puma workers to 0 if you rely heavily on Sidekiq for background jobs, otherwise, reduce worker_processes to 1-2 (default is dynamic)
          # Lower Puma workers if you have limited CPU (adjust based on your resources)
          puma['worker_processes'] = 2 # e.g., 0 Or 1-2 for very low RAM, for a 2 CPU machine #PROBAR OTROS VALORES
-         puma['per_worker_max_memory_mb'] = 2048 # Limit each worker to 2 GB #PROBAR OTROS VALORES
+         puma['per_worker_max_memory_mb'] = 1536 # Limit each worker to 2 GB. Mínimo recomendado 1200MB, 1536MB punto equilibrio, 2GB. Con 1GB llegan al limite contantemente reiniciando.
       
-      #To search and purify.
-      #nginx['enable'] = true;
-      #gitlab_rails['registry_enabled'] = true;
-      #external_url 'http://gitlab.local:8929';
-      #gitlab_rails['gitlab_shell_ssh_port'] = 2224;
-      #nginx['listen_port'] = 8929;
-      #nginx['listen_https'] = false;
-      #registry_external_url 'http://gitlab.local:5050'
     ports:
       - '8929:8929'      # HTTP web interface
       - '443:443'       # HTTPS (alternative port)
       - '2424:22'        # SSH (alternative port)
-      #- '5050:5050'      # Registry
+      - '5050:5000'      # Registry
     volumes:
-      - $GITLAB_HOME/data	/var/opt/gitlab	#Stores application data.
-      - $GITLAB_HOME/logs	/var/log/gitlab	#Stores logs.
-      - $GITLAB_HOME/config	/etc/gitlab
+      - ./gitlight/data:/var/opt/gitlab	#Stores application data.
+      - ./gitlight/logs:/var/log/gitlab	#Stores logs.
+      - ./gitlight/config:/etc/gitlab
       #- gitlab_config:/etc/gitlab
       #- gitlab_logs:/var/log/gitlab
       #- gitlab_data:/var/opt/gitlab
       #- registry_data:/var/opt/gitlab/gitlab-rails/shared/registry
     shm_size: '256m'
     mem_limit: 8g
-    #networks:
-    #  gitlight:
+    networks:
+      gitnet:
 
 
-#networks:
-#  gitlight:
-#    driver: bridge
+networks:
+  gitnet:
+    driver: bridge
+    name: gitnet
