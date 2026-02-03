@@ -1,1 +1,5 @@
 gitlight/
+.env
+.redis.conf
+!.env.example
+.env.*

@@ -13,66 +13,127 @@ services:
     container_name: gitlight
     restart: always
     hostname: 'localhost'
+    env_file: .env 
     environment:
       #GITLAB_SIGNUP_ENABLED: false # Does not work
       #GITLAB_RAILS_SIGNUP_ENABLED: false # Does not work
       GITLAB_OMNIBUS_CONFIG: |
-         external_url 'http://gitlab.local:8929';
-         gitlab_rails['gitlab_shell_ssh_port'] = 2424
-         # gitlab_rails['signup_enabled'] = false # Desactiva la posibilidad de que usarios creen cuenta al ingresar al sitio. # Does not work
-         # gitlab_rails['gitlab_signup_enabled'] = false # Enteoria desactiva lo mismo... que porqueria... # Does not work
+        # gitlab_rails['signup_enabled'] = false # Desactiva la posibilidad de que usarios creen cuenta al ingresar al sitio. # Does not work
+        # gitlab_rails['gitlab_signup_enabled'] = false # Enteoria desactiva lo mismo... que porqueria... # Does not work
 
-         #Disable extra services for less memory usage
-       
-         # Disable monitoring services
-         gitlab_pages['enable'] = false
-         prometheus['enable'] = false
-         prometheus_monitoring['enable'] = false #added to test
-         mattermost['enable'] = false
-         alertmanager['enable'] = false
-       
-         # Disable built-in data exporters
-         node_exporter['enable'] = false
-         postgres_exporter['enable'] = false
-         redis_exporter['enable'] = false
-         gitlab_exporter['enable'] = false
-         
-         # Disable extra apps/features
-         registry['enable'] = true # Is used for CI/CD and user management. Can be replaced for a external one.
-         registry_external_url 'http://gitlab.local:5050'
-         nginx['enable'] = true;
-         nginx['listen_port'] = 8929;
-         nginx['listen_https'] = false;
+        external_url 'http://gitlab.local'  #external_url 'http://gitlab.local:8929';
+        gitlab_rails['gitlab_shell_ssh_port'] = 2424
+        
+        # --- DESACTIVA DB Y NGINX INTERNOS ---
+        postgresql['enable'] = false
+        #nginx['enable'] = false
+        redis['enable'] = true  # Keep Redis enabled
+
+        # --- DB EXTERNA ---
+        gitlab_rails['db_adapter'] = 'postgresql'
+        gitlab_rails['db_encoding'] = 'unicode'
+        gitlab_rails['db_host'] = ENV['HOST_DB']
+        gitlab_rails['db_password'] = ENV['POSTGRES_PASSWORD'] # Must match POSTGRES_PASSWORD
+        gitlab_rails['db_username'] = ENV['POSTGRES_USER']
+        gitlab_rails['db_database'] = ENV['POSTGRES_DB']
+ 
+        # --- REVERSE PROXY CONFIG ---
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        web_server['external_users'] = ['nginx'] 
+        # Important for correct Client IP logging through NGINX
+        gitlab_rails['trusted_proxies'] = ['nginx_proxy'] 
+        
+        #registry_external_url 'http://gitlab.local:5050'
+        #nginx['listen_port'] = 8929;
       
-         # XXXX grafana['enable'] = false # Deprecated 17+
-         # XXXX focalboard['enable'] = false # Deprecated 17+
+        # --- OPTIMIZATION DE RECURSOS --- 
+        # Workers # Reduce Sidekiq concurrency (adjust based on your RAM)
+                 # Crucial: Set Puma workers to 0 if you rely heavily on Sidekiq for background jobs, otherwise, reduce worker_processes to 1-2 (default is dynamic)
+                 # Lower Puma workers if you have limited CPU (adjust based on your resources)
+        puma['worker_processes'] = 2 # e.g., 0 Or 1-2 for very low RAM, for a 2 CPU machine #PROBAR OTROS VALORES
+        puma['per_worker_max_memory_mb'] = 1536 # Limit each worker to 2 GB. Mínimo recomendado 1200MB, 1536MB punto equilibrio, 2GB. Con 1GB llegan al limite contantemente reiniciando.
+        sidekiq['max_concurrency'] = 10 # Default is higher, 10-20 is good for low RAM #PROBAR OTROS VALORES
+       
+        # Fix for Signup (2026 requirements)
+        gitlab_rails['gitlab_signup_enabled'] = false
+   
+        # --- DESACTIVACION SERVICIOS EXTRA ---
+        # Disable monitoring services
+        gitlab_pages['enable'] = false
+        prometheus['enable'] = false
+        prometheus_monitoring['enable'] = false #added to test
+        mattermost['enable'] = false
+        alertmanager['enable'] = false
+       
+        # Disable built-in data exporters
+        node_exporter['enable'] = false
+        postgres_exporter['enable'] = false
+        redis_exporter['enable'] = false
+        gitlab_exporter['enable'] = false
          
-         # Workers
-         # Reduce Sidekiq concurrency (adjust based on your RAM)
-         sidekiq['max_concurrency'] = 10 # Default is higher, 10-20 is good for low RAM #PROBAR OTROS VALORES
-         # Crucial: Set Puma workers to 0 if you rely heavily on Sidekiq for background jobs, otherwise, reduce worker_processes to 1-2 (default is dynamic)
-         # Lower Puma workers if you have limited CPU (adjust based on your resources)
-         puma['worker_processes'] = 2 # e.g., 0 Or 1-2 for very low RAM, for a 2 CPU machine #PROBAR OTROS VALORES
-         puma['per_worker_max_memory_mb'] = 1536 # Limit each worker to 2 GB. Mínimo recomendado 1200MB, 1536MB punto equilibrio, 2GB. Con 1GB llegan al limite contantemente reiniciando.
-      
-    ports:
+        # Disable/Enable extra apps/features.
+        registry['enable'] = true # Is used for CI/CD and user management. Can be replaced for a external one.
+        registry_nginx['enable'] = false  # CRITICAL: Disable registry's nginx
+        registry['port'] = '5000'
+        
+        # XXXX grafana['enable'] = false # Deprecated 17+
+        # XXXX focalboard['enable'] = false # Deprecated 17+
+        
+         
+    ports: #Managed by nginx
       - '8929:8929'      # HTTP web interface
-      - '443:443'       # HTTPS (alternative port)
+      - '443:443'        # HTTPS (alternative port)
       - '2424:22'        # SSH (alternative port)
       - '5050:5000'      # Registry
+    depends_on:
+      db:
+        condition: service_healthy 
     volumes:
       - ./gitlight/data:/var/opt/gitlab	#Stores application data.
       - ./gitlight/logs:/var/log/gitlab	#Stores logs.
       - ./gitlight/config:/etc/gitlab
-      #- gitlab_config:/etc/gitlab
-      #- gitlab_logs:/var/log/gitlab
-      #- gitlab_data:/var/opt/gitlab
-      #- registry_data:/var/opt/gitlab/gitlab-rails/shared/registry
+      - registry_data:/var/opt/gitlab/gitlab-rails/shared/registry
     shm_size: '256m'
     mem_limit: 8g
     networks:
       gitnet:
+  
+  db:
+    image: postgres:16
+    container_name: ${HOST_DB}
+    restart: always
+    env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - gitlight-db:/var/lib/postgresql/data
+      - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d  # add entry point to create gitliab tables on postgres db
+    networks:
+      - gitnet
 
+  # gitlight-nginx:
+  #   image: nginx:latest
+  #   container_name: gitlight-nginx
+  #   restart: always
+  #   ports:
+  #     - '80:80'
+  #     - '443:443'
+  #   depends_on:
+  #     - gitlight
+  #   volumes:
+  #     - ./nginx/conf.d:/etc/nginx/conf.d:ro
+  #     # IMPORTANT: If using UNIX sockets (uncommon in Docker), you must share the socket volume here
+  #   networks:
+  #     - gitnet
+
+volumes:
+  gitlight-db:
+  registry_data:
 
 networks:
   gitnet:
